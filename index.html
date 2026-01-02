@@ -2867,93 +2867,188 @@
         };
 
         const landingApp = {
-            checkExistingUser: () => {
-                const userData = localStorage.getItem('laundryUser');
-                return userData ? JSON.parse(userData) : null;
-            },
-            checkDbAndRedirect: (user) => {
-                const uid = user.uid;
-                const userRef = db.ref('users/' + uid);
-                userRef.once('value').then((snapshot) => {
-                    if (snapshot.exists()) {
-                        const userData = snapshot.val();
-                        localStorage.setItem('laundryUser', JSON.stringify(userData));
-                        globalNav.loadUserData(userData);
-                        globalNav.switchView('home');
-                        if (typeof ordersApp !== 'undefined') ordersApp.init();
-                    } else {
-                        document.getElementById('view-landing').classList.remove('active');
-                        document.getElementById('view-login').classList.add('active');
-                    }
-                }).catch((error) => {
-                    console.error("Database error:", error);
-                    accountApp.showToast("Error connecting to database.");
+    checkExistingUser: () => {
+        const userData = localStorage.getItem('laundryUser');
+        return userData ? JSON.parse(userData) : null;
+    },
+    
+    checkDbAndRedirect: (user) => {
+        const uid = user.uid;
+        const userRef = db.ref('users/' + uid);
+        userRef.once('value').then((snapshot) => {
+            if (snapshot.exists()) {
+                const userData = snapshot.val();
+                localStorage.setItem('laundryUser', JSON.stringify(userData));
+                globalNav.loadUserData(userData);
+                globalNav.switchView('home');
+                if (typeof ordersApp !== 'undefined') ordersApp.init();
+            } else {
+                document.getElementById('view-landing').classList.remove('active');
+                document.getElementById('view-login').classList.add('active');
+            }
+        }).catch((error) => {
+            console.error("Database error:", error);
+            accountApp.showToast("Error connecting to database.");
+        });
+    },
+    
+    initGoogleOneTap: () => {
+        console.log("🔄 Initializing Google One Tap...");
+        
+        // Wait for Google script to load
+        const initGoogle = () => {
+            if (typeof google === 'undefined' || !google.accounts) {
+                console.warn("⏳ Google script not loaded yet. Retrying in 500ms...");
+                setTimeout(initGoogle, 500);
+                return;
+            }
+            
+            console.log("✅ Google script loaded successfully");
+            
+            try {
+                google.accounts.id.initialize({
+                    client_id: "49184911914-dv5glbevsao2p7dhhtqgrkj2dv55sseu.apps.googleusercontent.com",
+                    callback: landingApp.handleCredentialResponse,
+                    auto_select: false, // Changed to false for testing
+                    cancel_on_tap_outside: true,
+                    context: "signin",
+                    ux_mode: "popup", // Added for better compatibility
+                    itp_support: true
                 });
-            },
-            initGoogleOneTap: () => {
-                console.log("Initializing Google One Tap...");
-                if (typeof google === 'undefined') {
-                    console.warn("Google Identity Services script not loaded yet. Retrying...");
-                    setTimeout(landingApp.initGoogleOneTap, 500);
-                    return;
-                }
-                console.log("Google script found. Setting up client...");
-                try {
-                    google.accounts.id.initialize({
-                        client_id: "49184911914-dv5glbevsao2p7dhhtqgrkj2dv55sseu.apps.googleusercontent.com",
-                        callback: landingApp.handleCredentialResponse,
-                        auto_select: true,
-                        cancel_on_tap_outside: false
-                    });
-                    console.log("Client initialized. Requesting prompt...");
-                    google.accounts.id.prompt((notification) => {
-                        console.log("Prompt notification received:", notification);
-                        if (notification.isNotDisplayed()) {
-                            console.error("One Tap NOT displayed. Reason:", notification.getNotDisplayedReason());
-                        } else if (notification.isSkippedMoment()) {
-                            console.warn("One Tap skipped. Reason:", notification.getSkippedReason());
-                        } else {
-                            console.log("One Tap displayed successfully.");
-                        }
-                    });
-                } catch (e) {
-                    console.error("Error during One Tap initialization:", e);
-                }
-            },
-            handleCredentialResponse: (response) => {
-                console.log("Credential response received from Google:", response);
-                if (!response.credential) {
-                    console.error("No credential token received!");
-                    return;
-                }
-                console.log("Creating Firebase credential...");
-                const credential = firebase.auth.GoogleAuthProvider.credential(response.credential);
-                console.log("Signing into Firebase...");
-                auth.signInWithCredential(credential)
-                    .then((result) => {
-                        console.log("Firebase Sign-In Successful:", result);
-                        accountApp.showToast("Logged in successfully!");
-                    })
-                    .catch((error) => {
-                        console.error("Firebase Auth Error:", error);
-                        console.error("Error Code:", error.code);
-                        console.error("Error Message:", error.message);
-                        accountApp.showToast("Login Failed: " + error.message);
-                    });
-            },
-            handleGoogleAuth: () => {
-                // Trigger the Google One Tap prompt manually if the button is clicked
-                google.accounts.id.prompt();
-            },
-            confirmLogout: () => { document.getElementById('logoutModal').style.display = 'flex'; },
-            performLogout: () => {
-                auth.signOut().then(() => {
-                    localStorage.removeItem('laundryUser');
-                    if (typeof google !== 'undefined') google.accounts.id.disableAutoSelect();
-                    location.reload();
-                }).catch((error) => { console.error("Sign Out Error", error); });
+                
+                console.log("✅ Google One Tap initialized");
+                
+                // Render the button as fallback
+                google.accounts.id.renderButton(
+                    document.querySelector(".btn-google"),
+                    {
+                        theme: "outline",
+                        size: "large",
+                        width: 280,
+                        text: "continue_with"
+                    }
+                );
+                
+                // Show One Tap prompt
+                google.accounts.id.prompt((notification) => {
+                    console.log("📢 Prompt notification:", notification);
+                    
+                    if (notification.isNotDisplayed()) {
+                        console.error("❌ One Tap NOT displayed");
+                        console.error("Reason:", notification.getNotDisplayedReason());
+                        console.log("💡 Showing button as fallback");
+                    } else if (notification.isSkippedMoment()) {
+                        console.warn("⏭️ One Tap skipped");
+                        console.warn("Reason:", notification.getSkippedReason());
+                    } else {
+                        console.log("✅ One Tap displayed successfully");
+                    }
+                });
+                
+            } catch (e) {
+                console.error("❌ Error during One Tap initialization:", e);
             }
         };
+        
+        initGoogle();
+    },
+    
+    handleCredentialResponse: (response) => {
+        console.log("🔐 Credential response received");
+        
+        if (!response.credential) {
+            console.error("❌ No credential token received!");
+            accountApp.showToast("Login failed. Please try again.");
+            return;
+        }
+        
+        console.log("✅ Credential token received");
+        console.log("🔄 Creating Firebase credential...");
+        
+        const credential = firebase.auth.GoogleAuthProvider.credential(response.credential);
+        
+        console.log("🔄 Signing into Firebase...");
+        
+        auth.signInWithCredential(credential)
+            .then((result) => {
+                console.log("✅ Firebase Sign-In Successful!");
+                console.log("User:", result.user.email);
+                accountApp.showToast("✅ Logged in successfully!");
+            })
+            .catch((error) => {
+                console.error("❌ Firebase Auth Error:", error);
+                console.error("Error Code:", error.code);
+                console.error("Error Message:", error.message);
+                
+                // User-friendly error messages
+                let errorMsg = "Login Failed. ";
+                switch(error.code) {
+                    case 'auth/popup-blocked':
+                        errorMsg += "Please allow popups for this site.";
+                        break;
+                    case 'auth/popup-closed-by-user':
+                        errorMsg += "Login cancelled.";
+                        break;
+                    case 'auth/network-request-failed':
+                        errorMsg += "Network error. Check your connection.";
+                        break;
+                    default:
+                        errorMsg += error.message;
+                }
+                
+                accountApp.showToast(errorMsg);
+            });
+    },
+    
+    handleGoogleAuth: () => {
+        console.log("🖱️ Manual login button clicked");
+        
+        if (typeof google === 'undefined' || !google.accounts) {
+            console.error("❌ Google script not loaded!");
+            accountApp.showToast("Google login not ready. Please refresh.");
+            return;
+        }
+        
+        // Trigger the Google One Tap prompt manually
+        google.accounts.id.prompt();
+    },
+    
+    confirmLogout: () => { 
+        document.getElementById('logoutModal').style.display = 'flex'; 
+    },
+    
+    performLogout: () => {
+        auth.signOut().then(() => {
+            localStorage.removeItem('laundryUser');
+            if (typeof google !== 'undefined' && google.accounts) {
+                google.accounts.id.disableAutoSelect();
+            }
+            location.reload();
+        }).catch((error) => { 
+            console.error("Sign Out Error", error); 
+        });
+    }
+};
+```
+
+## 🔧 Additional Steps Required:
+
+### Google Cloud Console Setup:
+1. **Go to**: https://console.cloud.google.com/
+2. **Select your project**: business-project-910f2
+3. **APIs & Services** → **Credentials**
+4. **Edit your OAuth 2.0 Client ID**
+5. **Add Authorized JavaScript origins**:
+```
+   http://localhost
+   http://localhost:8080
+   http://127.0.0.1
+   https://yourdomain.com (jab deploy karenge)
+```
+6. **Add Authorized redirect URIs**:
+```
+   http://localhost
+   https://smartchotuu-bot.github.io
 
         const globalNav = {
             loadUserData: (user) => {
@@ -3857,3 +3952,4 @@
 </body>
 
 </html>
+
